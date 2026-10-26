@@ -27,6 +27,9 @@
     <h1>Amiga Hydraulic Arm twin</h1>
     <p class="lead">A battery-powered hydraulic arm on a farm-ng Amiga rover. The rover drives along a watermelon row. The camera finds each fruit, and the arm puts it in a side tray or on a conveyor. The conveyor fills a bin on the deck.</p>
 
+    <h2>The conveyor</h2>
+    <p>The conveyor is a rigid belt. Its upper part rests on a roller at the near rim of the deck bin. A horizontal cylinder under the rover moves its low end along a level track at the handoff height. When the cylinder pushes out, the low end comes under the gripper and the top of the belt is at the bin edge. When the cylinder pulls in, the conveyor slides up over the roller and the low end goes under the rover, clear of the arm. The conveyor waits if the fruit is still lower than the top of the belt near the center.</p>
+
     <h2>The panel, from top to bottom</h2>
     <p>The panel is in the sequence that you use it. The toolbar stays at the top when you scroll.</p>
     <div class="tablewrap"><table>
@@ -49,7 +52,7 @@
       <caption>The effect of each choice</caption>
       <tr><th>Choice</th><th>Effect</th></tr>
       <tr><td>In the side tray</td><td>The arm moves each watermelon to the side and puts it in a tray next to the arm.</td></tr>
-      <tr><td>In the deck bin</td><td>The conveyor slides down. The arm puts the fruit on the belt, and the belt carries it into the bin on the deck (12 places for round fruit).</td></tr>
+      <tr><td>In the deck bin</td><td>When the arm lifts the fruit, a horizontal cylinder under the rover pushes the low end of the conveyor out, under the gripper. The arm puts the fruit on the belt. The belt carries it up to the top end, which is at the edge of the deck bin, and the fruit drops into the bin (12 places for round fruit). Then the cylinder pulls the conveyor back in under the rover.</td></tr>
       <tr><td>Clear leaves before each pick</td><td>The air knife in front of the arm blows the leaves away. If the first camera image is not good, a puff of air at the gripper clears the area. Then the camera looks a second time.</td></tr>
       <tr><td>Basic: on/off valves</td><td>Two valves in series move one cylinder at a time. The camera guides the arm.</td></tr>
       <tr><td>Upgraded</td><td>Proportional valves in parallel move the two cylinders together on smooth straight paths. Position sensors on the cylinders guide the arm.</td></tr>

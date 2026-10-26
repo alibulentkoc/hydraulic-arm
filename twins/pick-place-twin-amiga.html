@@ -2049,16 +2049,26 @@ function binSlot(k){
   var B = binGeo(), per = B.nx * B.nz, layer = Math.floor(k / per), r = k % per, ix = r % B.nx, iz = Math.floor(r / B.nx);
   return new V3(-B.w / 2 + (ix + 0.5) * B.w / B.nx, B.floor + P.objH / 2 + layer * P.objH * 0.85, B.z0 + (iz + 0.5) * B.ds / B.nz);
 }
-function convTop(){ return new V3(0, deckTop() + P.binWall + 8, -P.armOffset - 5); }
+// Conveyor: a rigid belt that rests on a roller at the near rim of the deck bin. A horizontal cylinder under the
+// rover pushes the low end out along a level track at the handoff height, under the gripper, and pulls it back in.
+// Pushed out, the top of the belt is at the bin edge. Pulled in, the belt slides up over the roller.
+function convRoller(){ return new V3(0, deckTop() + P.binWall + 0.3, -P.armOffset - 3); }
+function convTop(){ return convRoller(); }
 function convLowFull(){ return new V3(0, hY(), -1.5); }
-// Fixed-length conveyor on a slide. A linear actuator pulls it up the slide to stow it and lets it down to the handoff.
-function convAxis(){ var t = convTop(), l = convLowFull(), u = t.clone().sub(l), L = u.length(); u.normalize(); return { u:u, L:L, low:l, top:t }; }
+function convLen(){ return convRoller().distanceTo(convLowFull()); }
 function convShift(ext){ return (P.convStroke + (P.wrist ? 8 : 0)) * (1 - ext); }   // with a wrist, the stowed belt clears the turning gripper
-function convLow(ext){ var a = convAxis(); return a.low.clone().addScaledVector(a.u, convShift(ext)); }
-function convTopNow(ext){ var a = convAxis(); return a.top.clone().addScaledVector(a.u, convShift(ext)); }
-function axisPt(s, side, drop){ var a = convAxis(), n = convNormal(); return a.low.clone().addScaledVector(a.u, s).add(new V3(side, 0, 0)).addScaledVector(n, -drop); }
-function convNormal(){ var d = convLowFull().sub(convTop()).normalize(); return new V3(0, d.z, -d.y).multiplyScalar(d.z >= 0 ? 1 : -1); }
+function convLow(ext){ var l = convLowFull(); l.z -= convShift(ext); return l; }
+function convDir(ext){ return convRoller().sub(convLow(ext)).normalize(); }
+function convTopNow(ext){ return convLow(ext).addScaledVector(convDir(ext), convLen()); }
+function convAxis(){ return { u:convDir(C.ext), L:convLen(), low:convLow(C.ext), top:convTopNow(C.ext) }; }
+function convNormal(ext){ var u = convDir(ext === undefined ? C.ext : ext), n = new V3(0, -u.z, u.y); return n.y < 0 ? n.multiplyScalar(-1) : n; }
 function handTipY(){ return hY() + 0.5 + 0.3 + P.objH / 2 + (S.holdDy === undefined ? gL() : S.holdDy); }
+// The conveyor waits while a held watermelon near the center is lower than the top of the belt.
+function convBlocked(){
+  if (!S.held) return false;
+  var t = tipNow();
+  return Math.abs(t.x) < 5.5 + halfX() + 0.5 && t.y < handTipY() - 0.05;   // the bottom of the melon is lower than the top of the belt
+}
 function buildConveyor(){
   var belt = new THREE.MeshStandardMaterial({ color:0x2b3139, roughness:0.8 }), alu = new THREE.MeshStandardMaterial({ color:0xb8bec6, metalness:0.6, roughness:0.35 });
   convMesh = new THREE.Mesh(new THREE.BoxGeometry(10, 1, 0.8), belt); world.add(convMesh);
@@ -2066,23 +2076,25 @@ function buildConveyor(){
   convCleats = [];
   for (var k = 0; k < 10; k++) { var c = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.5, 1.4), new THREE.MeshStandardMaterial({ color:0xff8a1f })); world.add(c); convCleats.push(c); }
   var steel = new THREE.MeshStandardMaterial({ color:0x8a929c, metalness:0.5, roughness:0.5 }), dk = new THREE.MeshStandardMaterial({ color:0x2b3139, metalness:0.4, roughness:0.4 });
-  convGuides = [-1, 1].map(function(sx){ var m = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1, 1.2), steel); m.userData.sx = sx; world.add(m); return m; });
+  convGuides = [-1, 1].map(function(sx){ var m = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 1), steel); m.userData.sx = sx; world.add(m); return m; });
+  convCarr = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), steel); world.add(convCarr);
   convStrut = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), steel); world.add(convStrut);
-  convActBody = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1, 14), dk); world.add(convActBody);
+  convActBody = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1, 14), new THREE.MeshStandardMaterial({ color:0x2b6cb0, metalness:0.3, roughness:0.5 })); world.add(convActBody);
   convActRod = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1, 10), mat.rod); world.add(convActRod);
 }
-var convGuides = [], convStrut = null, convActBody = null, convActRod = null;
+var convGuides = [], convStrut = null, convActBody = null, convActRod = null, convCarr = null;
 function updateConvMeshes(){
   if (!convMesh) return;
   var t = convTopNow(C.ext), l = convLow(C.ext), n = convNormal(), u = t.clone().sub(l), len = u.length(); u.normalize();
-  var ax = convAxis(), Sx = P.convStroke, sh = convShift(C.ext);
-  // fixed slide guides on the rover, the strut down to the deck, and the slide actuator beside the belt
-  convGuides.forEach(function(m){ var a0 = axisPt(Sx, m.userData.sx * 6.3, 0.3), a1 = axisPt(ax.L, m.userData.sx * 6.3, 0.3); placeSeg(m, a0.x, a0.y, a0.z, a1.x, a1.y, a1.z); });
-  placeSeg(convStrut, ax.top.x + 6.3, ax.top.y - 0.3, ax.top.z, ax.top.x + 6.3, deckTop(), ax.top.z);
-  var att = sh + ax.L * 0.6, b0 = Sx + ax.L * 0.6 + 1, b1 = b0 + Sx + 1.5;
-  var pa = axisPt(att, 7.6, 0.6), pb0 = axisPt(b0, 7.6, 0.6), pb1 = axisPt(b1, 7.6, 0.6);
-  placeSeg(convActRod, pa.x, pa.y, pa.z, pb0.x, pb0.y, pb0.z);
-  placeSeg(convActBody, pb0.x, pb0.y, pb0.z, pb1.x, pb1.y, pb1.z);
+  // level track rails and the push cylinder under the rover; the roller across the bin rim
+  var Smax = convShift(0), z0 = convLowFull().z, yT = hY() - 1.2, yC = hY() - 2.6, lz = l.z;
+  convGuides.forEach(function(m){ placeSeg(m, m.userData.sx * 4.2, yT, z0 + 1, m.userData.sx * 4.2, yT, z0 - Smax - 3); });
+  var R = convRoller();
+  placeSeg(convStrut, -6.2, R.y - 0.9, R.z, 6.2, R.y - 0.9, R.z);
+  var zb0 = z0 - Smax - 1.5, zb1 = zb0 - (Smax + 3);
+  placeSeg(convActBody, 0, yC, zb0, 0, yC, zb1);
+  placeSeg(convActRod, 0, yC, lz - 0.6, 0, yC, zb0);
+  placeSeg(convCarr, 0, yC, lz - 0.6, 0, l.y - 0.4, lz - 0.6);
   placeSeg(convMesh, l.x, l.y, l.z, t.x, t.y, t.z);
   convRails.forEach(function(m){ placeSeg(m, l.x + m.userData.sx * 5.4, l.y + n.y * 0.6, l.z + n.z * 0.6, t.x + m.userData.sx * 5.4, t.y + n.y * 0.6, t.z + n.z * 0.6); });
   convCleats.forEach(function(c, k){
@@ -2093,7 +2105,7 @@ function updateConvMeshes(){
 }
 function updateConv(dt){
   var rate = dt / Math.max(0.2, P.convExtTime);
-  if (C.ext < C.extTarget) C.ext = Math.min(C.extTarget, C.ext + rate); else if (C.ext > C.extTarget) C.ext = Math.max(C.extTarget, C.ext - rate);
+  if (C.ext < C.extTarget) { if (!convBlocked()) C.ext = Math.min(C.extTarget, C.ext + rate); } else if (C.ext > C.extTarget) C.ext = Math.max(C.extTarget, C.ext - rate);
   S.pConv = (C.ext !== C.extTarget ? P.convExtW : 0) + (C.running ? P.convW : 0);
   if (!C.running) return;
   C.phase += P.convSpeed * dt;
@@ -3203,7 +3215,7 @@ function autoUpdate(){
         setWp(A.tx, liftY(A.tx)); go('lift');
       } break;
     case 'lift': if (A.reached) {
-        if (A.harv && S.held) { var rt = reachAtX(0); A.stageY = Math.min(rt ? rt.hi - 0.3 : handTipY() + 2, handTipY() + 3); setWp(0, A.stageY); go('tocenter'); }
+        if (A.harv && S.held) { C.extTarget = 1; var rt = reachAtX(0); A.stageY = Math.min(rt ? rt.hi - 0.3 : handTipY() + 2, handTipY() + 3); setWp(0, A.stageY); go('tocenter'); }
         else if (A.harv) { var hm3 = findHome(); if (hm3) { setWp(hm3.x, hm3.y); go('home'); } else go('idle'); }
         else { setWp(tray.x, Math.min(pickY() + tray.h + 0.4, liftY(tray.x))); go('tobin'); }
       } break;
@@ -3217,12 +3229,12 @@ function autoUpdate(){
     case 'cPuffMove': if (A.reached) { S.v = [0, 0]; var tpf = tipNow(); airPuff(tpf.x, tpf.y - pD() - 1, 0); if (o.leaves) blowLeaves(o, 0.95, A.cInfo.est.x, A.cInfo.est.z, P.puffRadius); rowBlow(A.cInfo.est.x, A.cInfo.est.z, P.puffRadius, 0.95); go('cPuff'); } break;
     case 'cPuff': if (S.t - A.phaseT > 1.0) { var hb = findHome(); if (hb) { setWp(hb.x, hb.y); go('cBack'); say('Puff done. Moving the arm out of the camera view.', ''); } else { A.cDone = true; go('detect'); } } break;
     case 'cBack': if (A.reached) { S.v = [0, 0]; A.cDone = true; var v2 = leafVis(o); A.cInfo.vis2 = v2.frac; go('detect'); say('Second look: ' + Math.round(v2.frac * 100) + '% visible.', ''); } break;
-    case 'tocenter': if (A.reached) { S.v = [0, 0]; C.extTarget = 1; go('convOut'); say('Conveyor extending under the watermelon.', ''); } break;
+    case 'tocenter': if (A.reached) { S.v = [0, 0]; C.extTarget = 1; go('convOut'); if (C.ext < 0.999) say('Push cylinder moving the conveyor out under the watermelon.', ''); } break;
     case 'convOut': if (C.ext >= 0.999) { setWp(0, handTipY()); go('lower'); } break;
     case 'lower': if (A.reached) { S.v = [0, 0]; A.relObj = S.held; S.gripCmd = 0; go('putdown'); } break;
     case 'putdown': if (S.grip <= 0.001) { setWp(0, A.stageY); go('clear'); } break;
     case 'clear': if (A.reached) { C.running = true; go('convey'); say('Conveyor carrying the watermelon to the deck bin.', ''); } break;
-    case 'convey': if (!C.running) { C.extTarget = 0; var hm4 = findHome(); if (hm4) { setWp(hm4.x, hm4.y); go('home'); } else { A.wp = null; go('idle'); } } break;
+    case 'convey': if (!C.running) { C.extTarget = 0; say('Watermelon in the bin. Push cylinder pulling the conveyor back in.', ''); var hm4 = findHome(); if (hm4) { setWp(hm4.x, hm4.y); go('home'); } else { A.wp = null; go('idle'); } } break;
     case 'tobin': if (A.reached) { S.v = [0, 0]; A.relObj = S.held; S.gripCmd = 0; go('release'); } break;
     case 'release':
       if (A.relObj === undefined) A.relObj = S.held;
@@ -3551,11 +3563,11 @@ fR.add(P, 'driveSpeed', 2, 40, 1).name('Drive speed (in/s)');
 var fCv = gui.addFolder('Transfer conveyor');
 fCv.add(P, 'handY', 3, 20, 0.5).name('Handoff height (in)');
 fCv.add(P, 'convSpeed', 2, 30, 1).name('Belt speed (in/s)');
-fCv.add(P, 'convStroke', 4, 24, 0.5).name('Slide actuator stroke (in)');
-fCv.add(P, 'convExtTime', 0.5, 10, 0.5).name('Extend time (s)');
+fCv.add(P, 'convStroke', 4, 24, 0.5).name('Push cylinder stroke (in)');
+fCv.add(P, 'convExtTime', 0.5, 10, 0.5).name('Push out time (s)');
 fCv.add(P, 'binWall', 2, 14, 0.5).name('Bin wall height (in)');
 fCv.add(P, 'convW', 0, 300, 5).name('Belt motor (W)');
-fCv.add(P, 'convExtW', 0, 200, 5).name('Extend actuator (W)');
+fCv.add(P, 'convExtW', 0, 200, 5).name('Push cylinder (W)');
 fCv.close();
 var fDt = gui.addFolder('Detect while driving');
 fDt.add(P, 'detRange', 30, 160, 5).name('Camera search range ahead (in)');
@@ -3722,7 +3734,7 @@ function updateReadouts(){
   rows.push(['Electrical power now', Math.round(S.pTotal || P.baseW) + ' W (' + f1((S.pTotal || P.baseW) / P.battV) + ' A at ' + P.battV + ' V)']);
   rows.push(['Motor power at relief', Math.round(P.idleW + P.pressure * P.flow / (1714 * P.pumpEff) * 745.7) + ' W']);
   var BG = binGeo(); rows.push(['Deck bin', C.bin.length + ' of ' + BG.cap + ' watermelons (' + BG.nx + ' x ' + BG.nz + ' x 2 layers)']);
-  rows.push(['Conveyor', (C.running ? 'running' : C.ext >= 0.999 ? 'extended' : C.ext <= 0.001 ? 'stowed (pulled up)' : 'sliding') + ', actuator ' + f1(P.convStroke * C.ext) + ' of ' + f1(P.convStroke) + ' in']);
+  rows.push(['Conveyor', (C.running ? 'running' : C.ext >= 0.999 ? 'extended' : C.ext <= 0.001 ? 'pulled in under the rover' : 'sliding') + ', actuator ' + f1(P.convStroke * C.ext) + ' of ' + f1(P.convStroke) + ' in']);
   if (A.cInfo) {
     rows.push(['Canopy detection', A.cInfo.kind + ', ' + Math.round(A.cInfo.vis * 100) + '% visible' + (A.cInfo.vis2 !== undefined ? ', ' + Math.round(A.cInfo.vis2 * 100) + '% after puff' : ''), 1]);
     rows.push(['Rough location error', f2(A.cInfo.err) + ' in' + (A.perc && A.perc.visible ? ', refined ' + f2(A.perc.err) + ' in' : '')]);

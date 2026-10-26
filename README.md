@@ -8,6 +8,10 @@ This repository contains the complete work:
 - **Lab and tractor twin** (`twins/pick-place-twin.html`): the course twin. The public copy is in the repository `pick-place-twin`.
 - **Help pages** (`help/`) for the two twins, and the landing page (`index.html`).
 
+## Changes
+
+- 2026-10-26: Amiga Hydraulic Arm twin: the conveyor rests on a roller at the bin edge; a horizontal cylinder under the rover pushes its low end out under the gripper and pulls it back in.
+
 ## Use the files
 
 Open `index.html` or a file in `twins/` directly in a browser. Each twin is one self-contained HTML file and operates offline. No server is necessary.
