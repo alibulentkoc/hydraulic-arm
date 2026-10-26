@@ -2057,7 +2057,15 @@ function convTop(){ return convRoller(); }
 function convLowFull(){ return new V3(0, hY(), -1.5); }
 function convLen(){ return convRoller().distanceTo(convLowFull()); }
 function convShift(ext){ return (P.convStroke + (P.wrist ? 8 : 0)) * (1 - ext); }   // with a wrist, the stowed belt clears the turning gripper
-function convLow(ext){ var l = convLowFull(); l.z -= convShift(ext); return l; }
+// Highest point of a watermelon or its leaves on the ground, plus 2 in of clearance.
+function rowClearY(){ return P.objH + 0.35 + 2; }
+// The low end moves level for the first half of the pull-in, then rises, so the stowed end clears the row under the rover.
+function convLow(ext){
+  var l = convLowFull(), f = 1 - ext; l.z -= convShift(ext);
+  var rise = Math.max(0, rowClearY() - l.y), k = Math.max(0, (f - 0.5) / 0.5);
+  l.y += rise * k * k * (3 - 2 * k);
+  return l;
+}
 function convDir(ext){ return convRoller().sub(convLow(ext)).normalize(); }
 function convTopNow(ext){ return convLow(ext).addScaledVector(convDir(ext), convLen()); }
 function convAxis(){ return { u:convDir(C.ext), L:convLen(), low:convLow(C.ext), top:convTopNow(C.ext) }; }
@@ -2076,7 +2084,7 @@ function buildConveyor(){
   convCleats = [];
   for (var k = 0; k < 10; k++) { var c = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.5, 1.4), new THREE.MeshStandardMaterial({ color:0xff8a1f })); world.add(c); convCleats.push(c); }
   var steel = new THREE.MeshStandardMaterial({ color:0x8a929c, metalness:0.5, roughness:0.5 }), dk = new THREE.MeshStandardMaterial({ color:0x2b3139, metalness:0.4, roughness:0.4 });
-  convGuides = [-1, 1].map(function(sx){ var m = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 1), steel); m.userData.sx = sx; world.add(m); return m; });
+  convGuides = [];
   convCarr = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), steel); world.add(convCarr);
   convStrut = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1, 1.5), steel); world.add(convStrut);
   convActBody = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1, 14), new THREE.MeshStandardMaterial({ color:0x2b6cb0, metalness:0.3, roughness:0.5 })); world.add(convActBody);
@@ -2086,15 +2094,17 @@ var convGuides = [], convStrut = null, convActBody = null, convActRod = null, co
 function updateConvMeshes(){
   if (!convMesh) return;
   var t = convTopNow(C.ext), l = convLow(C.ext), n = convNormal(), u = t.clone().sub(l), len = u.length(); u.normalize();
-  // level track rails and the push cylinder under the rover; the roller across the bin rim
-  var Smax = convShift(0), z0 = convLowFull().z, yT = hY() - 1.2, yC = hY() - 2.6, lz = l.z;
-  convGuides.forEach(function(m){ placeSeg(m, m.userData.sx * 4.2, yT, z0 + 1, m.userData.sx * 4.2, yT, z0 - Smax - 3); });
+  // the push cylinder just under the deck, a hanger down to the low end, and the roller across the bin rim
+  var Smax = convShift(0), z0 = convLowFull().z, yC = P.deckH - 2.5, hx = 6.6;
+  // the hanger is beside the belt and behind the held melon: it meets the belt where the belt is r + 2.5 in behind the arm plane (pushed out)
+  var u1 = convDir(1), dAtt = (P.objH / 2 + 2.5 + z0) / Math.max(0.2, Math.abs(u1.z)), att = l.clone().addScaledVector(u, Math.max(1, dAtt)), lz = att.z + 0.6;
   var R = convRoller();
   placeSeg(convStrut, -6.2, R.y - 0.9, R.z, 6.2, R.y - 0.9, R.z);
   var zb0 = z0 - Smax - 1.5, zb1 = zb0 - (Smax + 3);
-  placeSeg(convActBody, 0, yC, zb0, 0, yC, zb1);
-  placeSeg(convActRod, 0, yC, lz - 0.6, 0, yC, zb0);
-  placeSeg(convCarr, 0, yC, lz - 0.6, 0, l.y - 0.4, lz - 0.6);
+  zb0 = Math.min(zb0, convLowFull().z - Smax - 1.5 - Math.max(1, dAtt) * Math.abs(u1.z)); zb1 = zb0 - (Smax + 3);
+  placeSeg(convActBody, hx, yC, zb0, hx, yC, zb1);
+  placeSeg(convActRod, hx, yC, lz - 0.6, hx, yC, zb0);
+  placeSeg(convCarr, hx, yC, lz - 0.6, hx, att.y - 0.4, lz - 0.6);
   placeSeg(convMesh, l.x, l.y, l.z, t.x, t.y, t.z);
   convRails.forEach(function(m){ placeSeg(m, l.x + m.userData.sx * 5.4, l.y + n.y * 0.6, l.z + n.z * 0.6, t.x + m.userData.sx * 5.4, t.y + n.y * 0.6, t.z + n.z * 0.6); });
   convCleats.forEach(function(c, k){

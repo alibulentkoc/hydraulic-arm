@@ -10,7 +10,7 @@ This repository contains the complete work:
 
 ## Changes
 
-- 2026-10-26: Amiga Hydraulic Arm twin: the conveyor rests on a roller at the bin edge; a horizontal cylinder under the rover pushes its low end out under the gripper and pulls it back in.
+- 2026-10-26: Amiga Hydraulic Arm twin: the conveyor rests on a roller at the bin edge; a horizontal cylinder under the deck pushes its low end out under the gripper and pulls it back in. The stowed low end clears the row by 2 in. No track rails under the rover.
 
 ## Use the files
 
